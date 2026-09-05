@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { Engine } from './render/engine';
 import { SimClock } from './core/time/simclock';
@@ -9,6 +8,7 @@ import systemJson from './data/solar-system.json';
 import { SystemView, eclToRender } from './scene/system-view';
 import { Hud } from './ui/hud';
 import { Vec3d } from './core/math/vec3d';
+import { CameraRig } from './camera/rig';
 
 async function main() {
   const container = document.getElementById('app')!;
@@ -20,9 +20,7 @@ async function main() {
   const system = SolarSystem.fromDef(systemJson as SystemDef);
   system.update(clock.jd);
 
-  let focus: Body = system.byId.get('earth')!;
-  let flying = false;
-
+  const startFocus = system.byId.get('earth')!;
   const view = new SystemView(system, clock.jd, select);
   scene.add(view.group);
   void view.loadTextures(); // textures stream in; colored spheres until then
@@ -39,41 +37,31 @@ async function main() {
     labelRenderer.setSize(container.clientWidth, container.clientHeight),
   );
 
-  const controls = new OrbitControls(camera, engine.renderer.domElement);
-  controls.enableDamping = true;
-  controls.minDistance = focus.def.radiusKm * 1.05;
-  controls.maxDistance = 1e10;
+  const rig = new CameraRig(camera, system, startFocus, engine.renderer.domElement);
+
   // spawn on the sunlit side of the focus body, slightly off-axis
   {
     const sun = system.byId.get('sun')!;
     const toSun = new THREE.Vector3();
-    eclToRender(Vec3d.subVectors(sun.worldPosition, focus.worldPosition), toSun).normalize();
+    eclToRender(Vec3d.subVectors(sun.worldPosition, startFocus.worldPosition), toSun).normalize();
     const side = new THREE.Vector3().crossVectors(toSun, new THREE.Vector3(0, 1, 0)).normalize();
-    camera.position
-      .copy(toSun)
+    toSun
       .addScaledVector(side, 0.7)
       .addScaledVector(new THREE.Vector3(0, 1, 0), 0.35)
       .normalize()
-      .multiplyScalar(focus.def.radiusKm * 4);
+      .multiplyScalar(startFocus.def.radiusKm * 4);
+    rig.spawnAt(toSun);
   }
 
   const hud = new Hud(system, clock, select);
-  hud.setFocus(focus.def.id);
+  hud.setFocus(startFocus.def.id);
 
-  /**
-   * Refocus on a body. The render world is always origin-rebased to the
-   * focus body, so on switch we shift the camera by the old→new focus offset
-   * to keep its true position continuous, then glide in.
-   */
+  // debug/testing handle (used by the Playwright verification scripts)
+  Object.assign(window as object, { __se: { rig, clock, system, engine, select } });
+
   function select(b: Body) {
-    if (b === focus) return;
-    const shift = new THREE.Vector3();
-    eclToRender(Vec3d.subVectors(focus.worldPosition, b.worldPosition), shift);
-    camera.position.add(shift);
-    focus = b;
-    flying = true;
+    rig.flyTo(b);
     hud.setFocus(b.def.id);
-    controls.minDistance = b.def.radiusKm * 1.05;
   }
 
   const frameClock = new THREE.Clock();
@@ -81,18 +69,9 @@ async function main() {
     const dt = Math.min(frameClock.getDelta(), 0.1);
     clock.update(dt);
     system.update(clock.jd);
-    view.sync(focus);
-
-    if (flying) {
-      const desired = focus.def.radiusKm * 4;
-      const d = camera.position.length();
-      const nd = THREE.MathUtils.damp(d, desired, 3, dt);
-      camera.position.setLength(nd);
-      if (Math.abs(nd - desired) < desired * 0.02) flying = false;
-    }
-
-    controls.update();
-    hud.update();
+    view.sync(rig.focus);
+    rig.update(dt);
+    hud.update(rig);
     await engine.render();
     labelRenderer.render(scene, camera);
     requestAnimationFrame(frame);

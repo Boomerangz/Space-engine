@@ -1,5 +1,12 @@
 import type { Body, SolarSystem } from '../ephemeris/bodies';
+import type { CameraRig } from '../camera/rig';
 import { SimClock, jdToDate } from '../core/time/simclock';
+
+function fmtKm(km: number): string {
+  if (km >= 1e7) return `${(km / 149597870.7).toFixed(3)} au`;
+  if (km >= 1) return `${km.toLocaleString('en-US', { maximumFractionDigits: 0 })} km`;
+  return `${(km * 1000).toFixed(0)} m`;
+}
 
 const HUD_CSS = `
 .hud {
@@ -31,6 +38,13 @@ const HUD_CSS = `
 .hud-time button:hover { background: rgba(40, 60, 90, 0.7); }
 .hud-time .date { min-width: 180px; text-align: center; font-variant-numeric: tabular-nums; }
 .hud-time .warp { min-width: 52px; text-align: center; color: #8fc1ff; }
+.hud-status {
+  top: 12px; right: 12px; text-align: right; line-height: 1.5;
+  background: rgba(10, 16, 26, 0.55); border: 1px solid rgba(120, 150, 190, 0.25);
+  border-radius: 6px; padding: 6px 12px; font-variant-numeric: tabular-nums;
+}
+.hud-status .mode { color: #8fc1ff; }
+.hud-status .hint { color: #77839a; font-size: 11px; }
 .body-label {
   color: #b9c6d8; font-size: 12px; cursor: pointer; pointer-events: auto;
   padding: 6px; text-shadow: 0 0 4px #000;
@@ -50,6 +64,7 @@ export class Hud {
   private readonly dateEl: HTMLSpanElement;
   private readonly warpEl: HTMLSpanElement;
   private readonly pauseBtn: HTMLButtonElement;
+  private readonly statusEl: HTMLDivElement;
 
   constructor(
     system: SolarSystem,
@@ -92,6 +107,10 @@ export class Hud {
     bar.appendChild(this.dateEl);
     mk('Now', () => clock.setNow());
     document.body.appendChild(bar);
+
+    this.statusEl = document.createElement('div');
+    this.statusEl.className = 'hud hud-status';
+    document.body.appendChild(this.statusEl);
   }
 
   setFocus(id: string): void {
@@ -100,9 +119,16 @@ export class Hud {
     }
   }
 
-  update(): void {
+  update(rig?: CameraRig): void {
     this.dateEl.textContent = jdToDate(this.clock.jd).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
     this.warpEl.textContent = this.clock.paused ? '❚❚' : this.clock.warpLabel;
     this.pauseBtn.textContent = this.clock.paused ? '▶' : '❚❚';
+    if (rig) {
+      const mode = rig.mode === 'orbit' ? 'Orbit' : 'Fly';
+      this.statusEl.innerHTML =
+        `<span class="mode">${mode}</span> · ${rig.focus.def.name}<br>` +
+        `alt ${fmtKm(Math.max(rig.surfaceDistance, 0))}<br>` +
+        `<span class="hint">F fly/orbit · WASD+RV move · wheel ${rig.mode === 'orbit' ? 'zoom' : 'speed'}</span>`;
+    }
   }
 }

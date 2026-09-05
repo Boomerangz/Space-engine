@@ -9,27 +9,37 @@ surfaces — no loading screens.
 |---|---|
 | ![Earth from orbit](docs/screenshots/earth-orbit.png) | ![Saturn](docs/screenshots/saturn.png) |
 | ![Earth at night](docs/screenshots/earth-night.png) | ![Standing on Earth](docs/screenshots/earth-surface.png) |
+| ![Night sky from the ground](docs/screenshots/night-sky.png) | ![Total lunar eclipse](docs/screenshots/lunar-eclipse.png) |
 
 ## Features
 
 - **Real Solar System** — 8 planets, Pluto, the Moon, the Galilean moons,
-  Titan and Triton, positioned by the JPL approximate planetary elements
-  (J2000 + centennial rates) through an analytic Kepler solver. Time warp
-  from real time to ±10,000,000×.
+  Titan and Triton. Planets follow the JPL approximate planetary elements
+  (J2000 + centennial rates); moons use osculating elements pulled from the
+  JPL Horizons API at J2000, so lunar phases and moon positions are real.
+  Time warp from real time to ±10,000,000×.
 - **Seamless scale** — camera-relative rendering with f64 positions on the
   CPU (the render world is origin-rebased to the focused body), reversed
   logarithmic depth, dynamic near plane. Fly from the Sun to Pluto and land
   on the Moon with zero jitter.
-- **Landable planets** — cube-sphere quadtree LOD terrain generated in a
-  Web Worker pool: real albedo textures (NASA / Solar System Scope) plus a
-  deterministic simplex-fBm heightfield with a meter-scale detail spectrum.
-  The camera is clamped a few meters above the real ground.
+- **Landable planets** — cube-sphere quadtree LOD terrain: real albedo
+  textures (NASA / Solar System Scope) plus a deterministic simplex-fBm
+  heightfield with a meter-scale detail spectrum.
+  The camera is clamped a few meters above the real ground. Chunk meshes are
+  built either in a Web Worker pool or by a WebGPU compute shader — a startup
+  probe times both and picks the winner (`?gpugen` / `?cpugen` to force one).
 - **Atmospheres** — raymarched single-scattering (Rayleigh + Mie) for
   Earth, Mars, Venus and Titan, written in TSL so it compiles to both
   WebGPU and WebGL2. Blue sky and sunsets from the surface, glowing limb
   from orbit.
-- **Extras** — Saturn's rings, Earth's night-side city lights, HDR pipeline
-  with ACES tone mapping and bloom, orbit lines, body labels and info panel.
+- **Real night sky** — the Yale Bright Star Catalog (9110 stars) placed by
+  RA/Dec, sized by magnitude and tinted from B-V. Stars fade out inside a
+  sunlit atmosphere, so daylight hides them and the night side keeps them.
+- **Eclipses** — analytic solar-disc occlusion darkens the Moon during a
+  lunar eclipse and dims the ground under a solar one. Saturn's rings cast a
+  shadow on the planet and the planet casts one back across the rings.
+- **Extras** — Earth's clouds and night-side city lights, HDR pipeline with
+  ACES tone mapping and bloom, orbit lines, body labels and info panel.
 
 ## Running
 
@@ -65,8 +75,10 @@ src/
                atmosphere parameters for every body
   render/      WebGPURenderer wrapper, HDR + ACES + bloom
   scene/       per-body views (impostor sphere ↔ terrain), origin rebasing,
-               orbit lines, labels, rings, sun glow
-  terrain/     cube-sphere quadtree, worker pool, shared heightfield
+               orbit lines, labels, rings, sun glow, starfield, eclipses,
+               ring shadows
+  terrain/     cube-sphere quadtree, worker pool, WGSL compute generator,
+               shared heightfield
   atmosphere/  TSL single-scattering shader
   camera/      orbit/fly rig with f64 offsets and terrain clamp
   ui/          HUD: body list, time bar, status and info panels
@@ -81,27 +93,45 @@ Key invariants:
    octave cap does not depend on LOD level — so chunk borders match exactly
    across levels (verified by unit tests) and the camera clamp agrees with
    the rendered geometry.
+3. Noise inputs are rounded to f32 even on the CPU, so the worker path, the
+   WGSL kernel and the camera's terrain clamp all sample the same lattice.
 
 ## Verification
 
-`scripts/*.mjs` are Playwright checks used during development (headless
-Chromium, `?webgl` backend): fly-through Sun → Moon → Pluto, a Moon-surface
-jitter test comparing consecutive frames byte-for-byte, LOD descent
-screenshots, and a landing scenario (park at the subsolar point, pitch to
-the horizon, fly forward against the terrain clamp).
+Unit tests (`npm test`) cover the Kepler solver against real positions and
+phases, chunk-border continuity across LOD levels and cube faces, and the
+eclipse geometry.
+
+`scripts/verify-*.mjs` are Playwright checks run during development (headless
+Chromium):
+
+| script | what it checks |
+|---|---|
+| `verify-m2` | fly-through Sun → Moon → Pluto |
+| `verify-jitter` | consecutive frames byte-identical 5 km above the Moon |
+| `verify-m3` | LOD descent screenshots |
+| `verify-m4` | landing: park, pitch to the horizon, fly against the clamp |
+| `verify-stars` | star field in space, at night, and hidden by daylight |
+| `verify-shadows` | lunar eclipse darkening, Saturn ring/planet shadows |
+| `verify-gpu-terrain` | WGSL output vs the CPU reference, plus timings |
 
 ## Honest limitations / roadmap
 
-- Moon orbital phases are approximate (arbitrary epoch anomalies for most
-  moons); planet positions are good to visualization accuracy (degrees).
-- No eclipse/ring shadows, no clouds, no galaxy beyond a placeholder
-  starfield; Mercury still lacks a texture.
-- Terrain generation is CPU-worker based; a WebGPU compute path and KTX2
-  texture compression are the next performance steps.
+- Orbits are unperturbed two-body Kepler propagation from J2000 elements, so
+  events drift with time: the January 2000 total lunar eclipse lands within
+  ~14 hours of the real one, and the error grows for dates far from the
+  epoch. Good enough to look right, not an ephemeris.
+- The WebGPU terrain path is verified *correct* (it matches the CPU
+  reference to 1.8 m) but its speed is untested on real GPU hardware — the
+  development container only offers software WebGPU (SwiftShader), which is
+  why the engine benchmarks at startup instead of assuming.
+- No volumetric clouds, no galaxy beyond the star catalog, no atmospheric
+  multiple scattering. KTX2 texture compression is still on the list.
 
 ## Attribution
 
-Textures: NASA (Blue Marble, Black Marble, LROC) — public domain; Solar
-System Scope planet textures — CC BY 4.0. See
+Textures: NASA (Blue Marble, Black Marble, cloud composite, LROC) — public
+domain; Solar System Scope planet textures — CC BY 4.0. See
 `public/textures/ATTRIBUTION.md`. Orbital elements: JPL "Approximate
-Positions of the Planets".
+Positions of the Planets" and the JPL Horizons API. Stars: Yale Bright Star
+Catalog, 5th Revised Edition.

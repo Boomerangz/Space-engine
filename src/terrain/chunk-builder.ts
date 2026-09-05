@@ -115,9 +115,9 @@ export function buildChunk(req: ChunkRequest): ChunkResult {
       const tvl = Math.hypot(tvx, tvy, tvz) || 1;
       tux /= tul; tuy /= tul; tuz /= tul;
       tvx /= tvl; tvy /= tvl; tvz /= tvl;
-      let nx = d.x - tux * dhdu - tvx * dhdv;
-      let ny = d.y - tuy * dhdu - tvy * dhdv;
-      let nz = d.z - tuz * dhdu - tvz * dhdv;
+      const nx = d.x - tux * dhdu - tvx * dhdv;
+      const ny = d.y - tuy * dhdu - tvy * dhdv;
+      const nz = d.z - tuz * dhdu - tvz * dhdv;
       const nl = Math.hypot(nx, ny, nz) || 1;
       normals[vi * 3] = nx / nl;
       normals[vi * 3 + 1] = ny / nl;

@@ -189,13 +189,13 @@
       "color": "#b0aca6",
       "orbit": {
         "kind": "simple",
-        "aKm": 384400,
-        "e": 0.0549,
-        "iDeg": 5.145,
-        "OmegaDeg": 125.08,
-        "omegaDeg": 318.15,
-        "periodDays": 27.321661,
-        "M0Deg": 115.365
+        "aKm": 381874.5,
+        "e": 0.063147,
+        "iDeg": 5.2403,
+        "OmegaDeg": 123.9581,
+        "omegaDeg": 308.9227,
+        "periodDays": 27.016162,
+        "M0Deg": 146.6733
       },
       "terrain": {
         "amplitudeKm": 16,
@@ -312,13 +312,13 @@
       "color": "#d8c265",
       "orbit": {
         "kind": "simple",
-        "aKm": 421800,
-        "e": 0.0041,
-        "iDeg": 2.21,
-        "OmegaDeg": 0,
-        "omegaDeg": 0,
-        "periodDays": 1.769138,
-        "M0Deg": 0
+        "aKm": 422036.4,
+        "e": 0.004716,
+        "iDeg": 2.2126,
+        "OmegaDeg": 336.8524,
+        "omegaDeg": 66.1649,
+        "periodDays": 1.771396,
+        "M0Deg": 335.1532
       },
       "terrain": {
         "amplitudeKm": 8,
@@ -336,13 +336,13 @@
       "color": "#c9b7a0",
       "orbit": {
         "kind": "simple",
-        "aKm": 671100,
-        "e": 0.0094,
-        "iDeg": 2.68,
-        "OmegaDeg": 0,
-        "omegaDeg": 0,
-        "periodDays": 3.551181,
-        "M0Deg": 120
+        "aKm": 671248.5,
+        "e": 0.009813,
+        "iDeg": 1.791,
+        "OmegaDeg": 332.6287,
+        "omegaDeg": 254.6471,
+        "periodDays": 3.553206,
+        "M0Deg": 345.411
       },
       "terrain": {
         "amplitudeKm": 2,
@@ -360,13 +360,13 @@
       "color": "#9a9086",
       "orbit": {
         "kind": "simple",
-        "aKm": 1070400,
-        "e": 0.0013,
-        "iDeg": 2.29,
-        "OmegaDeg": 0,
-        "omegaDeg": 0,
-        "periodDays": 7.154553,
-        "M0Deg": 240
+        "aKm": 1070497.5,
+        "e": 0.001457,
+        "iDeg": 2.2141,
+        "OmegaDeg": 343.1728,
+        "omegaDeg": 319.8078,
+        "periodDays": 7.15587,
+        "M0Deg": 277.0488
       },
       "terrain": {
         "amplitudeKm": 4,
@@ -384,13 +384,13 @@
       "color": "#6f6357",
       "orbit": {
         "kind": "simple",
-        "aKm": 1882700,
-        "e": 0.0074,
-        "iDeg": 2.02,
-        "OmegaDeg": 0,
-        "omegaDeg": 0,
-        "periodDays": 16.689017,
-        "M0Deg": 60
+        "aKm": 1882773,
+        "e": 0.007439,
+        "iDeg": 2.0169,
+        "OmegaDeg": 337.9426,
+        "omegaDeg": 16.1269,
+        "periodDays": 16.691122,
+        "M0Deg": 85.1189
       },
       "terrain": {
         "amplitudeKm": 6,
@@ -453,13 +453,13 @@
       "color": "#c7973c",
       "orbit": {
         "kind": "simple",
-        "aKm": 1221870,
-        "e": 0.0288,
-        "iDeg": 27,
-        "OmegaDeg": 113.66,
-        "omegaDeg": 0,
-        "periodDays": 15.945421,
-        "M0Deg": 0
+        "aKm": 1221934.8,
+        "e": 0.028601,
+        "iDeg": 27.7183,
+        "OmegaDeg": 169.2392,
+        "omegaDeg": 164.4091,
+        "periodDays": 15.947348,
+        "M0Deg": 163.4362
       },
       "terrain": {
         "amplitudeKm": 3,
@@ -570,13 +570,13 @@
       "color": "#cbb8ae",
       "orbit": {
         "kind": "simple",
-        "aKm": 354759,
-        "e": 0.000016,
-        "iDeg": 130,
-        "OmegaDeg": 178.1,
-        "omegaDeg": 0,
-        "periodDays": -5.876854,
-        "M0Deg": 0
+        "aKm": 354766.1,
+        "e": 0.000146,
+        "iDeg": 130.2614,
+        "OmegaDeg": 215.8591,
+        "omegaDeg": 91.1714,
+        "periodDays": 5.877077,
+        "M0Deg": 343.4607
       },
       "terrain": {
         "amplitudeKm": 3,

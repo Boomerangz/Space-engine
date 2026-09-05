@@ -5,6 +5,7 @@ import type { SystemDef } from './types';
 import systemJson from '../data/solar-system.json';
 import { AU_KM } from '../core/constants';
 import { JD_J2000 } from '../core/time/simclock';
+import { Vec3d } from '../core/math/vec3d';
 
 const system = SolarSystem.fromDef(systemJson as SystemDef);
 
@@ -65,6 +66,32 @@ describe('planet positions', () => {
       const r = moon.localPosition.length();
       expect(r).toBeGreaterThan(356000);
       expect(r).toBeLessThan(407000);
+    }
+  });
+
+  it('reproduces real lunar phases from J2000 elements', () => {
+    const elongation = (jd: number): number => {
+      system.update(jd);
+      const e = system.byId.get('earth')!.worldPosition;
+      const toMoon = Vec3d.subVectors(system.byId.get('moon')!.worldPosition, e).normalize();
+      const toSun = Vec3d.subVectors(system.byId.get('sun')!.worldPosition, e).normalize();
+      return (Math.acos(Math.min(Math.max(toMoon.dot(toSun), -1), 1)) * 180) / Math.PI;
+    };
+    // new moon 2000-01-06 18:14 UTC: the Moon sits between Earth and Sun
+    expect(elongation(2451550.26)).toBeLessThan(5);
+    // full moon 2000-01-21 04:40 UTC (a total lunar eclipse)
+    expect(elongation(2451564.69)).toBeGreaterThan(165);
+    // next new moon, 2000-02-05
+    expect(elongation(2451579.7)).toBeLessThan(5);
+  });
+
+  it('Triton is retrograde via inclination only', () => {
+    const triton = system.byId.get('triton')!;
+    const orbit = triton.def.orbit!;
+    expect(orbit.kind).toBe('simple');
+    if (orbit.kind === 'simple') {
+      expect(orbit.iDeg).toBeGreaterThan(90); // retrograde orbit plane
+      expect(orbit.periodDays).toBeGreaterThan(0); // ...and NOT double-negated
     }
   });
 

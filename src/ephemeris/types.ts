@@ -49,6 +49,8 @@ export interface BodyDef {
   atmosphere?: AtmosphereParams;
   /** Emissive night-side texture (city lights). */
   nightTexture?: string;
+  /** White-on-black cloud map, used as an alpha mask on a shell above the surface. */
+  cloudTexture?: string;
 }
 
 export interface SystemDef {

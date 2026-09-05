@@ -21,6 +21,7 @@ export function eclToRender(v: Vec3d, out: THREE.Vector3): THREE.Vector3 {
 const tmp = new Vec3d();
 const tmpQ = new THREE.Quaternion();
 const tmpV = new THREE.Vector3();
+const tmpV2 = new THREE.Vector3();
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
@@ -35,6 +36,7 @@ class BodyView {
   readonly anchor = new THREE.Group();
   readonly sphere: THREE.Mesh;
   readonly labelEl: HTMLDivElement;
+  clouds: THREE.Mesh | null = null;
   orbitLine: THREE.Line | null = null;
   private readonly tiltQ = new THREE.Quaternion();
 
@@ -92,6 +94,30 @@ class BodyView {
         // keep the fallback color; texture is optional
       }
     }
+    if (def.cloudTexture) {
+      try {
+        const tex = await loader.loadAsync(`/textures/${def.cloudTexture}`);
+        tex.anisotropy = 4;
+        tex.wrapS = THREE.RepeatWrapping;
+        // the NASA cloud map is white-on-black: use it as the alpha channel
+        const cloudMat = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          alphaMap: tex,
+          transparent: true,
+          depthWrite: false,
+          roughness: 1,
+          metalness: 0,
+        });
+        this.clouds = new THREE.Mesh(
+          new THREE.SphereGeometry(def.radiusKm + 8, 96, 48),
+          cloudMat,
+        );
+        this.clouds.renderOrder = 1;
+        this.anchor.add(this.clouds);
+      } catch {
+        // optional
+      }
+    }
     if (def.nightTexture && 'emissiveMap' in mat) {
       try {
         const tex = await loader.loadAsync(`/textures/${def.nightTexture}`);
@@ -139,6 +165,9 @@ class BodyView {
     tmpQ.setFromAxisAngle(Y_AXIS, this.body.spin);
     this.anchor.quaternion.copy(this.tiltQ).multiply(tmpQ);
 
+    // clouds drift slowly westward relative to the ground
+    if (this.clouds) this.clouds.rotation.y = this.body.spin * 0.02;
+
     if (this.orbitLine) {
       const parent = this.body.parent!;
       Vec3d.subVectors(parent.worldPosition, focusWorld, tmp);
@@ -155,6 +184,9 @@ export class SystemView {
   private readonly heightfields = new Map<string, Heightfield>();
   private readonly atmospheres = new Map<string, Atmosphere>();
   private readonly pool = new TerrainWorkerPool();
+  /** Fraction of the Sun's disc visible from the focus body, 1 = no eclipse. */
+  eclipseFactor = 1;
+  private readonly sunBaseIntensity = 3.2;
 
   constructor(
     readonly system: SolarSystem,
@@ -176,7 +208,7 @@ export class SystemView {
       if (body.def.type === 'star') this.addStarGlow(view);
     }
 
-    this.sunLight = new THREE.PointLight(0xffffff, 3.2, 0, 0);
+    this.sunLight = new THREE.PointLight(0xffffff, this.sunBaseIntensity, 0, 0);
     this.group.add(this.sunLight);
     this.group.add(new THREE.AmbientLight(0xffffff, 0.03));
   }
@@ -255,6 +287,10 @@ export class SystemView {
     Vec3d.subVectors(sun.worldPosition, focusWorld, tmp);
     eclToRender(tmp, this.sunLight.position);
 
+    // eclipse dimming, evaluated at the focus body (what the camera sees lit)
+    this.eclipseFactor = this.sunVisibility(focus.worldPosition, focus);
+    this.sunLight.intensity = this.sunBaseIntensity * (0.02 + 0.98 * this.eclipseFactor);
+
     for (const [id, atmo] of this.atmospheres) {
       const anchor = this.views.get(id)!.anchor;
       atmo.uCenter.value.copy(anchor.position);
@@ -296,6 +332,56 @@ export class SystemView {
   }
 
   /**
+   * Fraction of the Sun's disc still visible from `point` (ecliptic km),
+   * accounting for every other body that may be in the way. 1 = full Sun,
+   * 0 = totality. This is what darkens the Moon during a lunar eclipse and
+   * dims the ground under the Moon's shadow during a solar one.
+   */
+  private sunVisibility(point: Vec3d, ignore: Body | null): number {
+    const sun = this.system.byId.get('sun')!;
+    Vec3d.subVectors(sun.worldPosition, point, tmp);
+    const sunDist = tmp.length();
+    if (sunDist === 0) return 1;
+    const sunAngular = Math.asin(Math.min(sun.def.radiusKm / sunDist, 1));
+    const toSun = tmp.clone().multiplyScalar(1 / sunDist);
+
+    let visible = 1;
+    for (const body of this.system.bodies) {
+      if (body === sun || body === ignore) continue;
+      Vec3d.subVectors(body.worldPosition, point, tmp);
+      const dist = tmp.length();
+      if (dist === 0 || dist >= sunDist) continue; // behind the Sun, or self
+      const bodyAngular = Math.asin(Math.min(body.def.radiusKm / dist, 1));
+      const sep = Math.acos(Math.min(Math.max(tmp.dot(toSun) / dist, -1), 1));
+      visible *= 1 - discOverlap(sunAngular, bodyAngular, sep);
+      if (visible <= 0) return 0;
+    }
+    return visible;
+  }
+
+  /**
+   * How bright the sky is where the camera sits: 0 in space or at night,
+   * 1 under a high Sun inside an atmosphere. Used to fade the starfield.
+   */
+  skyBrightness(rig: CameraRig): number {
+    const def = rig.focus.def;
+    const atmosphere = def.atmosphere;
+    if (!atmosphere) return 0;
+    const altitude = rig.offset.length() - def.radiusKm;
+    if (altitude > atmosphere.topKm) return 0;
+    // thickest at the surface, gone at the top of the atmosphere
+    const density = 1 - Math.min(Math.max(altitude / atmosphere.topKm, 0), 1);
+
+    const view = this.views.get(def.id)!;
+    tmpV.copy(this.sunLight.position).sub(view.anchor.position).normalize();
+    const up = tmpV2.copy(rig.offset).normalize();
+    const sunElevation = tmpV.dot(up); // 1 = zenith, <0 = below the horizon
+    // twilight fades out over roughly 18 deg below the horizon
+    const daylight = Math.min(Math.max((sunElevation + 0.31) / 0.4, 0), 1);
+    return density * daylight * this.eclipseFactor;
+  }
+
+  /**
    * Keep the camera above the terrain of the focused body and report the
    * true altitude (drives the exponential fly speed). Uses the same
    * heightfield the mesh workers use, so the clamp matches the geometry.
@@ -321,4 +407,20 @@ export class SystemView {
     rig.terrainAltitude = rig.offset.length() - surfaceR;
     rig.surfaceDistance = Math.min(rig.surfaceDistance, rig.terrainAltitude);
   }
+}
+
+/**
+ * Fraction of a disc of angular radius `r1` covered by one of radius `r2`
+ * whose centre is `sep` away (all radians). Standard circle-circle overlap.
+ */
+function discOverlap(r1: number, r2: number, sep: number): number {
+  if (sep >= r1 + r2) return 0; // no contact
+  if (sep <= r2 - r1) return 1; // fully covered
+  if (sep <= r1 - r2) return (r2 * r2) / (r1 * r1); // occulter fully inside
+  const d = sep;
+  const a1 = Math.acos(Math.min(Math.max((d * d + r1 * r1 - r2 * r2) / (2 * d * r1), -1), 1));
+  const a2 = Math.acos(Math.min(Math.max((d * d + r2 * r2 - r1 * r1) / (2 * d * r2), -1), 1));
+  const area =
+    r1 * r1 * (a1 - Math.sin(2 * a1) / 2) + r2 * r2 * (a2 - Math.sin(2 * a2) / 2);
+  return Math.min(area / (Math.PI * r1 * r1), 1);
 }

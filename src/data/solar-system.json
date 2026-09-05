@@ -175,7 +175,8 @@
         "g": 0.76,
         "intensity": 22
       },
-      "nightTexture": "earth_night.jpg"
+      "nightTexture": "earth_night.jpg",
+      "cloudTexture": "earth_clouds.jpg"
     },
     {
       "id": "moon",

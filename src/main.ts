@@ -9,6 +9,7 @@ import { SystemView, eclToRender } from './scene/system-view';
 import { Hud } from './ui/hud';
 import { Vec3d } from './core/math/vec3d';
 import { CameraRig } from './camera/rig';
+import { Starfield } from './scene/starfield';
 
 async function main() {
   const container = document.getElementById('app')!;
@@ -25,7 +26,9 @@ async function main() {
   scene.add(view.group);
   void view.loadTextures(); // textures stream in; colored spheres until then
 
-  scene.add(makeStarfield());
+  const starfield = await Starfield.load();
+  scene.add(starfield.group);
+  console.info(`[space-engine] star catalog: ${starfield.starCount} stars`);
 
   // DOM overlay for body labels
   const labelRenderer = new CSS2DRenderer();
@@ -57,7 +60,7 @@ async function main() {
   hud.setFocus(startFocus);
 
   // debug/testing handle (used by the Playwright verification scripts)
-  Object.assign(window as object, { __se: { rig, clock, system, engine, select } });
+  Object.assign(window as object, { __se: { rig, clock, system, engine, view, starfield, select } });
 
   function select(b: Body) {
     rig.flyTo(b);
@@ -72,30 +75,13 @@ async function main() {
     view.sync(rig.focus);
     rig.update(dt, () => view.applyTerrainClamp(rig.focus, rig));
     view.updateTerrain(rig.focus, rig.offset);
+    starfield.setSkyBrightness(view.skyBrightness(rig));
     hud.update(rig);
     await engine.render();
     labelRenderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-}
-
-function makeStarfield(): THREE.Points {
-  const n = 6000;
-  const radius = 5e10; // km, well beyond the planets
-  const positions = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) {
-    const z = Math.random() * 2 - 1;
-    const phi = Math.random() * Math.PI * 2;
-    const r = Math.sqrt(1 - z * z);
-    positions[i * 3] = r * Math.cos(phi) * radius;
-    positions[i * 3 + 1] = r * Math.sin(phi) * radius;
-    positions[i * 3 + 2] = z * radius;
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false });
-  return new THREE.Points(geo, mat);
 }
 
 main().catch((err) => {

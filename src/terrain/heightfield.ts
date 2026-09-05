@@ -14,6 +14,13 @@ export interface TerrainParams {
   baseScale?: number;
   /** Ridged-multifractal blend 0..1 (mountainousness, default 0.35). */
   ridged?: number;
+  /**
+   * Small-scale roughness multiplier (default 1). The detail spectrum uses
+   * a higher persistence than the base fBm, so slopes grow toward meter
+   * scales instead of staying self-similar — this is what makes the ground
+   * look rocky when standing on it.
+   */
+  detail?: number;
 }
 
 const GRAD = new Float32Array([
@@ -111,18 +118,22 @@ export class Simplex3 {
 
 export class Heightfield {
   private readonly noise: Simplex3;
+  private readonly detailNoise: Simplex3;
   private readonly amplitude: number;
   private readonly baseFreq: number;
   private readonly ridged: number;
+  private readonly detail: number;
 
   constructor(
     params: TerrainParams,
     readonly radiusKm: number,
   ) {
     this.noise = new Simplex3(params.seed);
+    this.detailNoise = new Simplex3(params.seed * 7919 + 13);
     this.amplitude = params.amplitudeKm;
     this.baseFreq = 1 / (params.baseScale ?? 0.7);
     this.ridged = params.ridged ?? 0.35;
+    this.detail = params.detail ?? 1;
   }
 
   /**
@@ -153,6 +164,34 @@ export class Heightfield {
     }
     // fixed normalization keeps the surface identical across octave caps
     const h = sum * (1 - this.ridged) + ridgedSum * this.ridged;
-    return h * this.amplitude * 0.25;
+
+    // detail spectrum: ~30 km wavelength down to the cap, persistence 0.68
+    // (steeper small-scale slopes). Same global cap → still one function.
+    let detailSum = 0;
+    let dFreq = this.radiusKm / 30;
+    let dAmp = this.amplitude * 0.02 * this.detail;
+    for (let o = 0; o < 16; o++) {
+      const wavelength = this.radiusKm / dFreq;
+      const fade = Math.min(Math.max(wavelength / minWavelengthKm - 1, 0), 1);
+      if (fade === 0) break;
+      detailSum += this.detailNoise.noise(dx * dFreq, dy * dFreq, dz * dFreq) * dAmp * fade;
+      dFreq *= 2.03;
+      dAmp *= 0.68;
+    }
+
+    return h * this.amplitude * 0.25 + detailSum;
+  }
+
+  /**
+   * Albedo variation for close-range surface texture (regolith patches,
+   * tonal breakup) — multiplies the base texture color, centered on 0.
+   */
+  albedoVariation(dx: number, dy: number, dz: number): number {
+    const f1 = this.radiusKm / 0.8; // ~800 m patches
+    const f2 = this.radiusKm / 0.06; // ~60 m speckle
+    return (
+      this.detailNoise.noise(dx * f1, dy * f1, dz * f1) * 0.06 +
+      this.detailNoise.noise(dx * f2 + 31.7, dy * f2, dz * f2) * 0.05
+    );
   }
 }

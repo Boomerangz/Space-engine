@@ -9,5 +9,6 @@ self.onmessage = (e: MessageEvent<ChunkRequest>) => {
     result.positions.buffer,
     result.normals.buffer,
     result.uvs.buffer,
+    result.colors.buffer,
   ]);
 };

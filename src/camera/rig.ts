@@ -38,6 +38,8 @@ export class CameraRig {
 
   /** Distance from the camera to the nearest body surface, km. */
   surfaceDistance = Infinity;
+  /** Altitude above the focus body's terrain (set by the terrain clamp). */
+  terrainAltitude = Infinity;
 
   constructor(
     private readonly camera: THREE.PerspectiveCamera,
@@ -86,6 +88,7 @@ export class CameraRig {
     this.focus = body;
     this.mode = 'orbit';
     this.flyTarget = body.def.radiusKm * 4;
+    this.terrainAltitude = Infinity; // stale altitude belongs to the old focus
     this.lookAtFocus();
   }
 
@@ -162,7 +165,12 @@ export class CameraRig {
     this.orientation.setFromRotationMatrix(m);
   }
 
-  update(dt: number): void {
+  /**
+   * `onAfterMove` runs after movement but before the camera transform is
+   * written — the terrain clamp hooks in here so the camera never renders
+   * a frame from below the ground.
+   */
+  update(dt: number, onAfterMove?: () => void): void {
     this.updateSurfaceDistance();
 
     if (this.mode === 'fly') {
@@ -188,6 +196,8 @@ export class CameraRig {
       if (Math.abs(nd - this.flyTarget) < this.flyTarget * 0.02) this.flyTarget = 0;
     }
 
+    onAfterMove?.();
+
     this.camera.position.copy(this.offset);
     this.camera.quaternion.copy(this.orientation);
 
@@ -211,6 +221,7 @@ export class CameraRig {
       const d = camWorld.distanceTo(body.worldPosition) - body.def.radiusKm;
       if (d < best) best = d;
     }
-    this.surfaceDistance = best;
+    // the terrain clamp refines this with the real ground height
+    this.surfaceDistance = Math.min(best, this.terrainAltitude);
   }
 }

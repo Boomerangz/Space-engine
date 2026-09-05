@@ -5,7 +5,7 @@ import { buildIndices, CHUNK_RES } from './chunk-builder';
 import { faceDir, nodeArcKm, nodeChildren, nodeKey, nodeRect, type NodeId } from './cubesphere';
 
 const SPLIT_K = 3; // split when the camera is closer than K × chunk arc
-const MAX_INFLIGHT = 14;
+const MAX_INFLIGHT = 24;
 const CACHE_CAP = 900;
 
 const dir = { x: 0, y: 0, z: 0 };
@@ -32,13 +32,17 @@ export class PlanetTerrain {
   readonly group = new THREE.Group();
   private readonly chunks = new Map<string, ChunkState>();
   private readonly maxLevel: number;
+  private readonly material: THREE.MeshStandardMaterial;
   private frame = 0;
 
   constructor(
     private readonly body: Body,
-    private readonly material: THREE.Material,
+    private readonly baseMaterial: THREE.Material,
     private readonly pool: TerrainWorkerPool,
   ) {
+    // own material: base albedo texture + per-vertex slope/tonal shading
+    this.material = (baseMaterial as THREE.MeshStandardMaterial).clone();
+    this.material.vertexColors = true;
     const radius = body.def.radiusKm;
     // deepest level ≈ 1 m vertex spacing
     this.maxLevel = Math.ceil(Math.log2(((Math.PI / 2) * radius) / (CHUNK_RES * 0.001)));
@@ -58,6 +62,13 @@ export class PlanetTerrain {
   /** cameraLocal: camera position in the planet's rotating local frame, km. */
   update(cameraLocal: THREE.Vector3): void {
     this.frame++;
+    // the albedo texture may stream in after construction
+    const base = this.baseMaterial as THREE.MeshStandardMaterial;
+    if (base.map && this.material.map !== base.map) {
+      this.material.map = base.map;
+      this.material.color.set('#ffffff');
+      this.material.needsUpdate = true;
+    }
     const visible = new Set<string>();
     for (let face = 0; face < 6; face++) {
       this.visit({ face, level: 0, ix: 0, iy: 0 }, cameraLocal, visible);
@@ -119,6 +130,7 @@ export class PlanetTerrain {
         geo.setAttribute('position', new THREE.BufferAttribute(result.positions, 3));
         geo.setAttribute('normal', new THREE.BufferAttribute(result.normals, 3));
         geo.setAttribute('uv', new THREE.BufferAttribute(result.uvs, 2));
+        geo.setAttribute('color', new THREE.BufferAttribute(result.colors, 3));
         geo.setIndex(indices());
         const arc = nodeArcKm(node, this.body.def.radiusKm);
         geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), arc * 1.5);

@@ -21,6 +21,8 @@ export interface ChunkResult {
   positions: Float32Array;
   normals: Float32Array;
   uvs: Float32Array;
+  /** per-vertex albedo multiplier (slope shading + tonal breakup) */
+  colors: Float32Array;
 }
 
 const heightfields = new Map<string, Heightfield>();
@@ -55,6 +57,9 @@ export function buildChunk(req: ChunkRequest): ChunkResult {
   const positions = new Float32Array(count * 3);
   const normals = new Float32Array(count * 3);
   const uvs = new Float32Array(count * 2);
+  const colors = new Float32Array(count * 3);
+  // tonal breakup only matters (and only resolves) on close-range chunks
+  const variationWeight = Math.min(Math.max(1 - (arc / CHUNK_RES) / 2, 0), 1);
 
   // anchor: chunk-center surface point at h=0 (planet-local km)
   faceDir(node.face, u0 + size / 2, v0 + size / 2, d);
@@ -118,6 +123,16 @@ export function buildChunk(req: ChunkRequest): ChunkResult {
       normals[vi * 3 + 1] = ny / nl;
       normals[vi * 3 + 2] = nz / nl;
 
+      // slope shading + procedural tonal variation
+      const ndotd = (nx * d.x + ny * d.y + nz * d.z) / nl;
+      let shade = Math.min(Math.max(1 - (1 - ndotd) * 5, 0.55), 1);
+      if (variationWeight > 0) {
+        shade *= 1 + hf.albedoVariation(d.x, d.y, d.z) * variationWeight;
+      }
+      colors[vi * 3] = shade;
+      colors[vi * 3 + 1] = shade;
+      colors[vi * 3 + 2] = shade;
+
       // equirect UV matching three's SphereGeometry mapping, seam-unwrapped
       let u = Math.atan2(d.z, -d.x) / (2 * Math.PI);
       if (u - centerU > 0.5) u -= 1;
@@ -128,7 +143,7 @@ export function buildChunk(req: ChunkRequest): ChunkResult {
     }
   }
 
-  return { reqId: req.reqId, node, anchor, positions, normals, uvs };
+  return { reqId: req.reqId, node, anchor, positions, normals, uvs, colors };
 }
 
 /** Shared triangle indices for an N×N vertex grid (same for all chunks). */

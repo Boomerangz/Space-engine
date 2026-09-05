@@ -70,7 +70,7 @@ async function main() {
     clock.update(dt);
     system.update(clock.jd);
     view.sync(rig.focus);
-    rig.update(dt);
+    rig.update(dt, () => view.applyTerrainClamp(rig.focus, rig));
     view.updateTerrain(rig.focus, rig.offset);
     hud.update(rig);
     await engine.render();

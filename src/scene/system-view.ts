@@ -5,6 +5,8 @@ import { elementsToPosition } from '../ephemeris/kepler';
 import { Vec3d } from '../core/math/vec3d';
 import { PlanetTerrain } from '../terrain/planet-terrain';
 import { TerrainWorkerPool } from '../terrain/pool';
+import { Heightfield } from '../terrain/heightfield';
+import type { CameraRig } from '../camera/rig';
 
 /**
  * Ecliptic f64 frame (z = north ecliptic pole) → render frame (y-up), f32.
@@ -135,6 +137,7 @@ export class SystemView {
   readonly views = new Map<string, BodyView>();
   private readonly sunLight: THREE.PointLight;
   private readonly terrains = new Map<string, PlanetTerrain>();
+  private readonly heightfields = new Map<string, Heightfield>();
   private readonly pool = new TerrainWorkerPool();
 
   constructor(
@@ -237,5 +240,32 @@ export class SystemView {
     const show = active && terrain.ready;
     terrain.group.visible = show;
     view.sphere.visible = !show;
+  }
+
+  /**
+   * Keep the camera above the terrain of the focused body and report the
+   * true altitude (drives the exponential fly speed). Uses the same
+   * heightfield the mesh workers use, so the clamp matches the geometry.
+   */
+  applyTerrainClamp(focus: Body, rig: CameraRig): void {
+    const def = focus.def;
+    if (!def.terrain) {
+      rig.terrainAltitude = Infinity;
+      return;
+    }
+    const view = this.views.get(def.id)!;
+    let hf = this.heightfields.get(def.id);
+    if (!hf) {
+      hf = new Heightfield(def.terrain, def.radiusKm);
+      this.heightfields.set(def.id, hf);
+    }
+    tmpQ.copy(view.anchor.quaternion).invert();
+    tmpV.copy(rig.offset).applyQuaternion(tmpQ).normalize();
+    const h = hf.heightAt(tmpV.x, tmpV.y, tmpV.z, 0.005);
+    const surfaceR = def.radiusKm + h;
+    const minR = surfaceR + 0.004; // hold ~4 m above the ground
+    if (rig.offset.length() < minR) rig.offset.setLength(minR);
+    rig.terrainAltitude = rig.offset.length() - surfaceR;
+    rig.surfaceDistance = Math.min(rig.surfaceDistance, rig.terrainAltitude);
   }
 }

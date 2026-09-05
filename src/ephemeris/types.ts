@@ -1,4 +1,5 @@
 import type { JplApproxElements } from './kepler';
+import type { TerrainParams } from '../terrain/heightfield';
 
 export type BodyType = 'star' | 'planet' | 'dwarf' | 'moon';
 
@@ -42,6 +43,8 @@ export interface BodyDef {
   emissiveHdr?: [number, number, number];
   orbit?: JplOrbit | SimpleOrbit;
   ring?: { innerKm: number; outerKm: number; texture?: string };
+  /** Procedural relief for solid bodies; absent for stars/gas giants. */
+  terrain?: TerrainParams;
 }
 
 export interface SystemDef {

@@ -3,12 +3,13 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import type { Body, SolarSystem } from '../ephemeris/bodies';
 import { elementsToPosition } from '../ephemeris/kepler';
 import { Vec3d } from '../core/math/vec3d';
+import { PlanetTerrain } from '../terrain/planet-terrain';
+import { TerrainWorkerPool } from '../terrain/pool';
 
 /**
  * Ecliptic f64 frame (z = north ecliptic pole) → render frame (y-up), f32.
  * Positions handed to the GPU are always relative to the focus body, which
- * keeps f32 precision where the camera is (origin rebasing; M2 generalizes
- * this to fully camera-relative rendering).
+ * keeps f32 precision where the camera is.
  */
 export function eclToRender(v: Vec3d, out: THREE.Vector3): THREE.Vector3 {
   return out.set(v.x, v.z, -v.y);
@@ -16,6 +17,7 @@ export function eclToRender(v: Vec3d, out: THREE.Vector3): THREE.Vector3 {
 
 const tmp = new Vec3d();
 const tmpQ = new THREE.Quaternion();
+const tmpV = new THREE.Vector3();
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
@@ -26,8 +28,9 @@ const ORBIT_COLORS: Record<string, number> = {
 };
 
 class BodyView {
-  readonly mesh: THREE.Mesh;
-  readonly label: CSS2DObject;
+  /** Carries the body's render-space position and rotation. */
+  readonly anchor = new THREE.Group();
+  readonly sphere: THREE.Mesh;
   readonly labelEl: HTMLDivElement;
   orbitLine: THREE.Line | null = null;
   private readonly tiltQ = new THREE.Quaternion();
@@ -49,7 +52,8 @@ class BodyView {
         metalness: 0,
       });
     }
-    this.mesh = new THREE.Mesh(new THREE.SphereGeometry(def.radiusKm, 96, 48), material);
+    this.sphere = new THREE.Mesh(new THREE.SphereGeometry(def.radiusKm, 96, 48), material);
+    this.anchor.add(this.sphere);
     this.tiltQ.setFromAxisAngle(X_AXIS, THREE.MathUtils.degToRad(def.axialTiltDeg ?? 0));
 
     this.labelEl = document.createElement('div');
@@ -59,8 +63,12 @@ class BodyView {
       e.stopPropagation();
       onSelect(body);
     });
-    this.label = new CSS2DObject(this.labelEl);
-    this.mesh.add(this.label);
+    this.anchor.add(new CSS2DObject(this.labelEl));
+  }
+
+  /** Material used both by the far sphere and by terrain chunks. */
+  get surfaceMaterial(): THREE.Material {
+    return this.sphere.material as THREE.Material;
   }
 
   async loadTexture(loader: THREE.TextureLoader): Promise<void> {
@@ -70,7 +78,8 @@ class BodyView {
       const tex = await loader.loadAsync(`/textures/${file}`);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 8;
-      const mat = this.mesh.material as THREE.MeshStandardMaterial;
+      tex.wrapS = THREE.RepeatWrapping; // terrain UVs unwrap across the seam
+      const mat = this.sphere.material as THREE.MeshStandardMaterial;
       if ('map' in mat) {
         mat.map = tex;
         mat.color.set('#ffffff');
@@ -108,10 +117,10 @@ class BodyView {
   /** Update render-space transform relative to the focus body. */
   sync(focusWorld: Vec3d): void {
     Vec3d.subVectors(this.body.worldPosition, focusWorld, tmp);
-    eclToRender(tmp, this.mesh.position);
+    eclToRender(tmp, this.anchor.position);
 
     tmpQ.setFromAxisAngle(Y_AXIS, this.body.spin);
-    this.mesh.quaternion.copy(this.tiltQ).multiply(tmpQ);
+    this.anchor.quaternion.copy(this.tiltQ).multiply(tmpQ);
 
     if (this.orbitLine) {
       const parent = this.body.parent!;
@@ -125,6 +134,8 @@ export class SystemView {
   readonly group = new THREE.Group();
   readonly views = new Map<string, BodyView>();
   private readonly sunLight: THREE.PointLight;
+  private readonly terrains = new Map<string, PlanetTerrain>();
+  private readonly pool = new TerrainWorkerPool();
 
   constructor(
     readonly system: SolarSystem,
@@ -135,7 +146,7 @@ export class SystemView {
       const view = new BodyView(body, onSelect);
       view.buildOrbitLine(jd);
       this.views.set(body.def.id, view);
-      this.group.add(view.mesh);
+      this.group.add(view.anchor);
       if (view.orbitLine) this.group.add(view.orbitLine);
       this.addRing(body, view);
     }
@@ -166,16 +177,19 @@ export class SystemView {
       roughness: 1,
     });
     if (ring.texture) {
-      new THREE.TextureLoader().loadAsync(`/textures/${ring.texture}`).then((tex) => {
-        tex.colorSpace = THREE.SRGBColorSpace;
-        mat.map = tex;
-        mat.color.set('#ffffff');
-        mat.needsUpdate = true;
-      }).catch(() => undefined);
+      new THREE.TextureLoader()
+        .loadAsync(`/textures/${ring.texture}`)
+        .then((tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          mat.map = tex;
+          mat.color.set('#ffffff');
+          mat.needsUpdate = true;
+        })
+        .catch(() => undefined);
     }
     const mesh = new THREE.Mesh(geo, mat);
     mesh.rotation.x = -Math.PI / 2; // into the body's equatorial plane
-    view.mesh.add(mesh);
+    view.anchor.add(mesh);
   }
 
   async loadTextures(): Promise<void> {
@@ -190,5 +204,38 @@ export class SystemView {
     const sun = this.system.byId.get('sun')!;
     Vec3d.subVectors(sun.worldPosition, focusWorld, tmp);
     eclToRender(tmp, this.sunLight.position);
+  }
+
+  /**
+   * Drive the LOD terrain of the focused body. `cameraOffset` is the camera
+   * position relative to the focus body's center in render axes (rig.offset).
+   */
+  updateTerrain(focus: Body, cameraOffset: THREE.Vector3): void {
+    for (const [id, terrain] of this.terrains) {
+      if (id !== focus.def.id) {
+        terrain.group.visible = false;
+        this.views.get(id)!.sphere.visible = true;
+      }
+    }
+    if (!focus.def.terrain) return;
+    const view = this.views.get(focus.def.id)!;
+    const active = cameraOffset.length() < focus.def.radiusKm * 8;
+
+    let terrain = this.terrains.get(focus.def.id);
+    if (!terrain) {
+      if (!active) return;
+      terrain = new PlanetTerrain(focus, view.surfaceMaterial, this.pool);
+      view.anchor.add(terrain.group);
+      this.terrains.set(focus.def.id, terrain);
+    }
+
+    // camera in the planet's rotating local frame
+    tmpQ.copy(view.anchor.quaternion).invert();
+    tmpV.copy(cameraOffset).applyQuaternion(tmpQ);
+    terrain.update(tmpV);
+
+    const show = active && terrain.ready;
+    terrain.group.visible = show;
+    view.sphere.visible = !show;
   }
 }

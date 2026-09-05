@@ -71,6 +71,7 @@ async function main() {
     system.update(clock.jd);
     view.sync(rig.focus);
     rig.update(dt);
+    view.updateTerrain(rig.focus, rig.offset);
     hud.update(rig);
     await engine.render();
     labelRenderer.render(scene, camera);

@@ -8,6 +8,8 @@ import { TerrainWorkerPool } from '../terrain/pool';
 import { Heightfield } from '../terrain/heightfield';
 import { Atmosphere } from '../atmosphere/scattering';
 import type { CameraRig } from '../camera/rig';
+import { RingShadow } from './ring-shadow';
+import { sunVisibility } from './eclipse';
 
 /**
  * Ecliptic f64 frame (z = north ecliptic pole) → render frame (y-up), f32.
@@ -51,11 +53,19 @@ class BodyView {
       mat.color.setRGB(...def.emissiveHdr);
       material = mat;
     } else {
-      material = new THREE.MeshStandardMaterial({
-        color: def.color ?? '#888888',
-        roughness: 0.95,
-        metalness: 0,
-      });
+      // ringed planets need a node material so the ring shadow can modulate
+      // their diffuse term; everything else uses the plain standard material
+      material = def.ring
+        ? new THREE.MeshStandardNodeMaterial({
+            color: def.color ?? '#888888',
+            roughness: 0.95,
+            metalness: 0,
+          })
+        : new THREE.MeshStandardMaterial({
+            color: def.color ?? '#888888',
+            roughness: 0.95,
+            metalness: 0,
+          });
     }
     this.sphere = new THREE.Mesh(new THREE.SphereGeometry(def.radiusKm, 96, 48), material);
     this.anchor.add(this.sphere);
@@ -183,6 +193,7 @@ export class SystemView {
   private readonly terrains = new Map<string, PlanetTerrain>();
   private readonly heightfields = new Map<string, Heightfield>();
   private readonly atmospheres = new Map<string, Atmosphere>();
+  private readonly ringShadows = new Map<string, RingShadow>();
   private readonly pool = new TerrainWorkerPool();
   /** Fraction of the Sun's disc visible from the focus body, 1 = no eclipse. */
   eclipseFactor = 1;
@@ -226,13 +237,18 @@ export class SystemView {
       const u = (v3.length() - ring.innerKm) / (ring.outerKm - ring.innerKm);
       uv.setXY(i, u, 0.5);
     }
-    const mat = new THREE.MeshStandardMaterial({
+    const shadow = new RingShadow(body.def.radiusKm, ring.innerKm, ring.outerKm);
+    this.ringShadows.set(body.def.id, shadow);
+
+    const mat = new THREE.MeshStandardNodeMaterial({
       color: 0xbfae8f,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.85,
       roughness: 1,
     });
+    // the planet's disc casts a shadow across the rings
+    mat.aoNode = shadow.ringShadowNode();
     if (ring.texture) {
       new THREE.TextureLoader()
         .loadAsync(`/textures/${ring.texture}`)
@@ -241,6 +257,10 @@ export class SystemView {
           mat.map = tex;
           mat.color.set('#ffffff');
           mat.needsUpdate = true;
+          // ...and the rings cast theirs across the planet
+          const planetMat = view.sphere.material as THREE.MeshStandardNodeMaterial;
+          planetMat.aoNode = shadow.planetShadowNode(tex);
+          planetMat.needsUpdate = true;
         })
         .catch(() => undefined);
     }
@@ -288,8 +308,15 @@ export class SystemView {
     eclToRender(tmp, this.sunLight.position);
 
     // eclipse dimming, evaluated at the focus body (what the camera sees lit)
-    this.eclipseFactor = this.sunVisibility(focus.worldPosition, focus);
+    this.eclipseFactor = sunVisibility(this.system, focus.worldPosition, focus);
     this.sunLight.intensity = this.sunBaseIntensity * (0.02 + 0.98 * this.eclipseFactor);
+
+    for (const [id, shadow] of this.ringShadows) {
+      const anchor = this.views.get(id)!.anchor;
+      tmpV.copy(this.sunLight.position).sub(anchor.position).normalize();
+      tmpQ.copy(anchor.quaternion).invert();
+      shadow.uSunDir.value.copy(tmpV).applyQuaternion(tmpQ);
+    }
 
     for (const [id, atmo] of this.atmospheres) {
       const anchor = this.views.get(id)!.anchor;
@@ -329,34 +356,6 @@ export class SystemView {
     const show = active && terrain.ready;
     terrain.group.visible = show;
     view.sphere.visible = !show;
-  }
-
-  /**
-   * Fraction of the Sun's disc still visible from `point` (ecliptic km),
-   * accounting for every other body that may be in the way. 1 = full Sun,
-   * 0 = totality. This is what darkens the Moon during a lunar eclipse and
-   * dims the ground under the Moon's shadow during a solar one.
-   */
-  private sunVisibility(point: Vec3d, ignore: Body | null): number {
-    const sun = this.system.byId.get('sun')!;
-    Vec3d.subVectors(sun.worldPosition, point, tmp);
-    const sunDist = tmp.length();
-    if (sunDist === 0) return 1;
-    const sunAngular = Math.asin(Math.min(sun.def.radiusKm / sunDist, 1));
-    const toSun = tmp.clone().multiplyScalar(1 / sunDist);
-
-    let visible = 1;
-    for (const body of this.system.bodies) {
-      if (body === sun || body === ignore) continue;
-      Vec3d.subVectors(body.worldPosition, point, tmp);
-      const dist = tmp.length();
-      if (dist === 0 || dist >= sunDist) continue; // behind the Sun, or self
-      const bodyAngular = Math.asin(Math.min(body.def.radiusKm / dist, 1));
-      const sep = Math.acos(Math.min(Math.max(tmp.dot(toSun) / dist, -1), 1));
-      visible *= 1 - discOverlap(sunAngular, bodyAngular, sep);
-      if (visible <= 0) return 0;
-    }
-    return visible;
   }
 
   /**
@@ -407,20 +406,4 @@ export class SystemView {
     rig.terrainAltitude = rig.offset.length() - surfaceR;
     rig.surfaceDistance = Math.min(rig.surfaceDistance, rig.terrainAltitude);
   }
-}
-
-/**
- * Fraction of a disc of angular radius `r1` covered by one of radius `r2`
- * whose centre is `sep` away (all radians). Standard circle-circle overlap.
- */
-function discOverlap(r1: number, r2: number, sep: number): number {
-  if (sep >= r1 + r2) return 0; // no contact
-  if (sep <= r2 - r1) return 1; // fully covered
-  if (sep <= r1 - r2) return (r2 * r2) / (r1 * r1); // occulter fully inside
-  const d = sep;
-  const a1 = Math.acos(Math.min(Math.max((d * d + r1 * r1 - r2 * r2) / (2 * d * r1), -1), 1));
-  const a2 = Math.acos(Math.min(Math.max((d * d + r2 * r2 - r1 * r1) / (2 * d * r2), -1), 1));
-  const area =
-    r1 * r1 * (a1 - Math.sin(2 * a1) / 2) + r2 * r2 * (a2 - Math.sin(2 * a2) / 2);
-  return Math.min(area / (Math.PI * r1 * r1), 1);
 }

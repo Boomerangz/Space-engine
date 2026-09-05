@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type { Body } from '../ephemeris/bodies';
-import type { TerrainWorkerPool } from './pool';
+import type { ChunkBackend } from './backend';
 import { buildIndices, CHUNK_RES } from './chunk-builder';
 import { faceDir, nodeArcKm, nodeChildren, nodeKey, nodeRect, type NodeId } from './cubesphere';
 
@@ -38,7 +38,7 @@ export class PlanetTerrain {
   constructor(
     private readonly body: Body,
     private readonly baseMaterial: THREE.Material,
-    private readonly pool: TerrainWorkerPool,
+    private readonly pool: ChunkBackend,
   ) {
     // own material: base albedo texture + per-vertex slope/tonal shading
     this.material = (baseMaterial as THREE.MeshStandardMaterial).clone();

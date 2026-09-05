@@ -28,29 +28,51 @@ const GRAD = new Float32Array([
   1, 0, 1, -1, 0, -1, -1,
 ]);
 
+/**
+ * Deterministic 512-entry permutation table for a seed. Shared by the CPU
+ * noise below and the WGSL kernel (src/terrain/generator/chunk.wgsl.ts),
+ * which uploads it verbatim so both paths generate identical terrain.
+ */
+export function permutationTable(seed: number): Uint8Array {
+  const p = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) p[i] = i;
+  // xorshift-based deterministic shuffle
+  let s = seed >>> 0 || 1;
+  for (let i = 255; i > 0; i--) {
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    s >>>= 0;
+    const j = s % (i + 1);
+    const t = p[i];
+    p[i] = p[j];
+    p[j] = t;
+  }
+  const perm = new Uint8Array(512);
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+  return perm;
+}
+
 export class Simplex3 {
-  private readonly perm = new Uint8Array(512);
+  private readonly perm: Uint8Array;
 
   constructor(seed: number) {
-    const p = new Uint8Array(256);
-    for (let i = 0; i < 256; i++) p[i] = i;
-    // xorshift-based deterministic shuffle
-    let s = seed >>> 0 || 1;
-    for (let i = 255; i > 0; i--) {
-      s ^= s << 13;
-      s ^= s >>> 17;
-      s ^= s << 5;
-      s >>>= 0;
-      const j = s % (i + 1);
-      const t = p[i];
-      p[i] = p[j];
-      p[j] = t;
-    }
-    for (let i = 0; i < 512; i++) this.perm[i] = p[i & 255];
+    this.perm = permutationTable(seed);
   }
 
-  /** 3D simplex noise in [-1, 1]. */
-  noise(x: number, y: number, z: number): number {
+  /**
+   * 3D simplex noise in [-1, 1].
+   *
+   * Inputs are rounded to f32 first: the GPU kernel evaluates the very same
+   * function in f32, and at the deepest octaves (coordinates in the hundreds
+   * of thousands) a f64/f32 disagreement lands the sample in a different
+   * lattice cell entirely. Quantizing here keeps both paths — and therefore
+   * the rendered mesh and the camera's terrain clamp — on one surface.
+   */
+  noise(xIn: number, yIn: number, zIn: number): number {
+    const x = Math.fround(xIn);
+    const y = Math.fround(yIn);
+    const z = Math.fround(zIn);
     const F3 = 1 / 3;
     const G3 = 1 / 6;
     const s = (x + y + z) * F3;

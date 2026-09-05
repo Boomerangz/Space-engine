@@ -26,12 +26,14 @@ await page.evaluate(() => {
   se.select(se.system.byId.get('moon'));
   se.rig.park(1737.4 + 5); // 5 km above the surface
 });
-await page.waitForTimeout(3000);
+// wait for the LOD tree to settle: while chunks are still streaming in,
+// consecutive frames legitimately differ
+await page.waitForTimeout(20000);
 const a = await page.screenshot({ path: `${outDir}/vj-a.png` });
-await page.waitForTimeout(1500);
+await page.waitForTimeout(2000);
 const b = await page.screenshot({ path: `${outDir}/vj-b.png` });
 console.log('identical frames:', a.equals(b));
-const alt = await page.evaluate(() => window.__se.rig.surfaceDistance);
-console.log('altitude km:', alt.toFixed(3));
+const alt = await page.evaluate(() => window.__se.rig.terrainAltitude);
+console.log('altitude above terrain km:', alt.toFixed(3));
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();

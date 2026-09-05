@@ -25,6 +25,13 @@ async function main() {
   const view = new SystemView(system, clock.jd, select);
   scene.add(view.group);
   void view.loadTextures(); // textures stream in; colored spheres until then
+  await view.selectTerrainBackend(engine.renderer);
+  console.info(
+    `[space-engine] terrain generation: ${view.terrainBackend}` +
+      (view.terrainBenchmark
+        ? ` (probe: gpu ${view.terrainBenchmark.gpuMs} ms vs workers ${view.terrainBenchmark.cpuMs} ms)`
+        : ''),
+  );
 
   const starfield = await Starfield.load();
   scene.add(starfield.group);

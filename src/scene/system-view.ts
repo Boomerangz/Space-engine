@@ -5,6 +5,8 @@ import { elementsToPosition } from '../ephemeris/kepler';
 import { Vec3d } from '../core/math/vec3d';
 import { PlanetTerrain } from '../terrain/planet-terrain';
 import { TerrainWorkerPool } from '../terrain/pool';
+import type { ChunkBackend } from '../terrain/backend';
+import { GpuChunkGenerator } from '../terrain/generator/gpu';
 import { Heightfield } from '../terrain/heightfield';
 import { Atmosphere } from '../atmosphere/scattering';
 import type { CameraRig } from '../camera/rig';
@@ -194,7 +196,11 @@ export class SystemView {
   private readonly heightfields = new Map<string, Heightfield>();
   private readonly atmospheres = new Map<string, Atmosphere>();
   private readonly ringShadows = new Map<string, RingShadow>();
-  private readonly pool = new TerrainWorkerPool();
+  private pool: ChunkBackend = new TerrainWorkerPool();
+  /** Which path built the terrain currently on screen. */
+  terrainBackend: 'worker' | 'webgpu' = 'worker';
+  /** Per-chunk timings from the startup probe, for the HUD and diagnostics. */
+  terrainBenchmark: { gpuMs: number; cpuMs: number } | null = null;
   /** Fraction of the Sun's disc visible from the focus body, 1 = no eclipse. */
   eclipseFactor = 1;
   private readonly sunBaseIntensity = 3.2;
@@ -267,6 +273,57 @@ export class SystemView {
     const mesh = new THREE.Mesh(geo, mat);
     mesh.rotation.x = -Math.PI / 2; // into the body's equatorial plane
     view.anchor.add(mesh);
+  }
+
+  /**
+   * Pick the chunk-generation backend. The WebGPU compute path wins on real
+   * hardware, but a software WebGPU implementation (SwiftShader, some VMs)
+   * is far slower than the worker pool — so rather than trusting the backend
+   * name, time one chunk each way and keep the faster one.
+   *
+   * `?cpugen` / `?gpugen` force a path explicitly.
+   */
+  async selectTerrainBackend(renderer: unknown): Promise<void> {
+    const flags = new URLSearchParams(location.search);
+    if (flags.has('cpugen')) return;
+    const gpu = await GpuChunkGenerator.create(renderer);
+    if (!gpu) return;
+
+    const adopt = () => {
+      this.pool.dispose();
+      this.pool = gpu;
+      this.terrainBackend = 'webgpu';
+    };
+    if (flags.has('gpugen')) {
+      adopt();
+      return;
+    }
+
+    // Benchmark the way the engine actually loads terrain: a burst of deep
+    // chunks in parallel. Measuring one chunk at a time flatters the GPU
+    // path, whose per-dispatch readback latency only shows up under load.
+    const probes = Array.from({ length: 6 }, (_, k) => ({
+      radiusKm: 1737.4,
+      terrain: { amplitudeKm: 16, seed: 101 },
+      node: { face: k % 6, level: 10 + (k % 3), ix: 17 + k, iy: 23 },
+    }));
+    try {
+      await gpu.build(probes[0]); // warm up pipeline and buffers
+      const t0 = performance.now();
+      await Promise.all(probes.map((p) => gpu.build(p)));
+      const gpuMs = performance.now() - t0;
+      const t1 = performance.now();
+      await Promise.all(probes.map((p) => this.pool.build(p)));
+      const cpuMs = performance.now() - t1;
+      this.terrainBenchmark = { gpuMs: Math.round(gpuMs), cpuMs: Math.round(cpuMs) };
+      // Adopt only on a clear win. The worker path is the known-good one, and
+      // a software WebGPU implementation can benchmark close while collapsing
+      // under sustained load; a near-tie is not worth the switch.
+      if (gpuMs * 1.5 < cpuMs) adopt();
+      else gpu.dispose();
+    } catch {
+      gpu.dispose(); // any GPU trouble: stay on the workers
+    }
   }
 
   async loadTextures(): Promise<void> {

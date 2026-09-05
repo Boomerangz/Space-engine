@@ -1,5 +1,6 @@
 import type { JplApproxElements } from './kepler';
 import type { TerrainParams } from '../terrain/heightfield';
+import type { AtmosphereParams } from '../atmosphere/scattering';
 
 export type BodyType = 'star' | 'planet' | 'dwarf' | 'moon';
 
@@ -45,6 +46,9 @@ export interface BodyDef {
   ring?: { innerKm: number; outerKm: number; texture?: string };
   /** Procedural relief for solid bodies; absent for stars/gas giants. */
   terrain?: TerrainParams;
+  atmosphere?: AtmosphereParams;
+  /** Emissive night-side texture (city lights). */
+  nightTexture?: string;
 }
 
 export interface SystemDef {

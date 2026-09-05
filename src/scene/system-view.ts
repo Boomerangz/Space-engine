@@ -6,6 +6,7 @@ import { Vec3d } from '../core/math/vec3d';
 import { PlanetTerrain } from '../terrain/planet-terrain';
 import { TerrainWorkerPool } from '../terrain/pool';
 import { Heightfield } from '../terrain/heightfield';
+import { Atmosphere } from '../atmosphere/scattering';
 import type { CameraRig } from '../camera/rig';
 
 /**
@@ -74,21 +75,35 @@ class BodyView {
   }
 
   async loadTexture(loader: THREE.TextureLoader): Promise<void> {
-    const file = this.body.def.texture;
-    if (!file) return;
-    try {
-      const tex = await loader.loadAsync(`/textures/${file}`);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 8;
-      tex.wrapS = THREE.RepeatWrapping; // terrain UVs unwrap across the seam
-      const mat = this.sphere.material as THREE.MeshStandardMaterial;
-      if ('map' in mat) {
-        mat.map = tex;
-        mat.color.set('#ffffff');
-        mat.needsUpdate = true;
+    const def = this.body.def;
+    const mat = this.sphere.material as THREE.MeshStandardMaterial;
+    if (def.texture) {
+      try {
+        const tex = await loader.loadAsync(`/textures/${def.texture}`);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 8;
+        tex.wrapS = THREE.RepeatWrapping; // terrain UVs unwrap across the seam
+        if ('map' in mat) {
+          mat.map = tex;
+          mat.color.set('#ffffff');
+          mat.needsUpdate = true;
+        }
+      } catch {
+        // keep the fallback color; texture is optional
       }
-    } catch {
-      // keep the fallback color; texture is optional
+    }
+    if (def.nightTexture && 'emissiveMap' in mat) {
+      try {
+        const tex = await loader.loadAsync(`/textures/${def.nightTexture}`);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.wrapS = THREE.RepeatWrapping;
+        mat.emissiveMap = tex;
+        mat.emissive.set('#ffffff');
+        mat.emissiveIntensity = 0.35;
+        mat.needsUpdate = true;
+      } catch {
+        // optional
+      }
     }
   }
 
@@ -138,6 +153,7 @@ export class SystemView {
   private readonly sunLight: THREE.PointLight;
   private readonly terrains = new Map<string, PlanetTerrain>();
   private readonly heightfields = new Map<string, Heightfield>();
+  private readonly atmospheres = new Map<string, Atmosphere>();
   private readonly pool = new TerrainWorkerPool();
 
   constructor(
@@ -152,6 +168,12 @@ export class SystemView {
       this.group.add(view.anchor);
       if (view.orbitLine) this.group.add(view.orbitLine);
       this.addRing(body, view);
+      if (body.def.atmosphere) {
+        const atmo = new Atmosphere(body.def.radiusKm, body.def.atmosphere);
+        view.anchor.add(atmo.mesh);
+        this.atmospheres.set(body.def.id, atmo);
+      }
+      if (body.def.type === 'star') this.addStarGlow(view);
     }
 
     this.sunLight = new THREE.PointLight(0xffffff, 3.2, 0, 0);
@@ -200,6 +222,31 @@ export class SystemView {
     await Promise.all([...this.views.values()].map((v) => v.loadTexture(loader)));
   }
 
+  private addStarGlow(view: BodyView): void {
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(255,240,220,0.85)');
+    grad.addColorStop(0.25, 'rgba(255,220,180,0.28)');
+    grad.addColorStop(0.6, 'rgba(255,200,150,0.07)');
+    grad.addColorStop(1, 'rgba(255,190,140,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    const mat = new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(canvas),
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true,
+    });
+    const sprite = new THREE.Sprite(mat);
+    const r = view.body.def.radiusKm;
+    sprite.scale.set(r * 9, r * 9, 1);
+    view.anchor.add(sprite);
+  }
+
   /** Recompute render transforms with the focus body at the origin. */
   sync(focus: Body): void {
     const focusWorld = focus.worldPosition;
@@ -207,6 +254,12 @@ export class SystemView {
     const sun = this.system.byId.get('sun')!;
     Vec3d.subVectors(sun.worldPosition, focusWorld, tmp);
     eclToRender(tmp, this.sunLight.position);
+
+    for (const [id, atmo] of this.atmospheres) {
+      const anchor = this.views.get(id)!.anchor;
+      atmo.uCenter.value.copy(anchor.position);
+      atmo.uSunDir.value.copy(this.sunLight.position).sub(anchor.position).normalize();
+    }
   }
 
   /**

@@ -102,6 +102,19 @@
         "amplitudeKm": 8,
         "seed": 33,
         "ridged": 0.4
+      },
+      "atmosphere": {
+        "topKm": 150,
+        "betaR": [
+          0.012,
+          0.011,
+          0.009
+        ],
+        "hR": 16,
+        "betaM": 0.015,
+        "hM": 3,
+        "g": 0.72,
+        "intensity": 16
       }
     },
     {
@@ -148,7 +161,21 @@
         "seed": 7,
         "ridged": 0.4,
         "baseScale": 0.5
-      }
+      },
+      "atmosphere": {
+        "topKm": 100,
+        "betaR": [
+          0.0058,
+          0.0135,
+          0.0331
+        ],
+        "hR": 8.5,
+        "betaM": 0.021,
+        "hM": 1.2,
+        "g": 0.76,
+        "intensity": 22
+      },
+      "nightTexture": "earth_night.jpg"
     },
     {
       "id": "moon",
@@ -220,6 +247,19 @@
         "seed": 42,
         "ridged": 0.45,
         "baseScale": 0.5
+      },
+      "atmosphere": {
+        "topKm": 80,
+        "betaR": [
+          0.0025,
+          0.0014,
+          0.0008
+        ],
+        "hR": 11,
+        "betaM": 0.003,
+        "hM": 1.6,
+        "g": 0.7,
+        "intensity": 14
       }
     },
     {
@@ -425,6 +465,19 @@
         "amplitudeKm": 3,
         "seed": 25,
         "ridged": 0.3
+      },
+      "atmosphere": {
+        "topKm": 300,
+        "betaR": [
+          0.004,
+          0.0025,
+          0.001
+        ],
+        "hR": 40,
+        "betaM": 0.002,
+        "hM": 10,
+        "g": 0.6,
+        "intensity": 8
       }
     },
     {

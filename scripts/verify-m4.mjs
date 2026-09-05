@@ -7,6 +7,8 @@ import { chromium } from 'playwright-core';
 
 const base = process.argv[2] ?? 'http://localhost:5173/?webgl';
 const outDir = process.argv[3] ?? '.';
+const bodyId = process.argv[4] ?? 'moon';
+const radius = Number(process.argv[5] ?? 1737.4);
 
 const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium',
@@ -21,23 +23,23 @@ await page.goto(base, { waitUntil: 'networkidle' });
 await page.waitForTimeout(4000);
 
 // land at the subsolar point, 15 m up (the clamp will hold ≥4 m)
-await page.evaluate(() => {
+await page.evaluate(([bodyId, radius]) => {
   const se = window.__se;
   se.clock.paused = true;
-  se.select(se.system.byId.get('moon'));
-  const b = se.system.byId.get('moon');
+  se.select(se.system.byId.get(bodyId));
+  const b = se.system.byId.get(bodyId);
   const sun = se.system.byId.get('sun');
   const ex = sun.worldPosition.x - b.worldPosition.x;
   const ey = sun.worldPosition.y - b.worldPosition.y;
   const ez = sun.worldPosition.z - b.worldPosition.z;
   const len = Math.hypot(ex, ey, ez);
   const d = { x: ex / len, y: ez / len, z: -ey / len };
-  const r = 1737.4 + 0.015;
+  const r = radius + 0.015;
   se.rig.spawnAt({ x: d.x * r, y: d.y * r, z: d.z * r });
   se.rig.park(r);
-});
+}, [bodyId, radius]);
 await page.waitForTimeout(12000); // deep chunks build
-await page.screenshot({ path: `${outDir}/v4-down.png` });
+await page.screenshot({ path: `${outDir}/v4-${bodyId}-down.png` });
 
 // F → fly mode, then drag upward: pitch from nadir to the horizon (~90°)
 await page.keyboard.press('KeyF');
@@ -49,14 +51,14 @@ for (let i = 0; i < 16; i++) {
 }
 await page.mouse.up();
 await page.waitForTimeout(6000);
-await page.screenshot({ path: `${outDir}/v4-horizon.png` });
+await page.screenshot({ path: `${outDir}/v4-${bodyId}-horizon.png` });
 
 // fly forward for a while; the clamp must keep us above ground
 await page.keyboard.down('KeyW');
 await page.waitForTimeout(4000);
 await page.keyboard.up('KeyW');
 await page.waitForTimeout(3000);
-await page.screenshot({ path: `${outDir}/v4-flight.png` });
+await page.screenshot({ path: `${outDir}/v4-${bodyId}-flight.png` });
 
 const state = await page.evaluate(() => {
   const se = window.__se;

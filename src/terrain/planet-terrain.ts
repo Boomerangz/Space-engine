@@ -69,6 +69,12 @@ export class PlanetTerrain {
       this.material.color.set('#ffffff');
       this.material.needsUpdate = true;
     }
+    if (base.emissiveMap && this.material.emissiveMap !== base.emissiveMap) {
+      this.material.emissiveMap = base.emissiveMap;
+      this.material.emissive.copy(base.emissive);
+      this.material.emissiveIntensity = base.emissiveIntensity;
+      this.material.needsUpdate = true;
+    }
     const visible = new Set<string>();
     for (let face = 0; face < 6; face++) {
       this.visit({ face, level: 0, ix: 0, iy: 0 }, cameraLocal, visible);

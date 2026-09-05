@@ -1,0 +1,347 @@
+{
+  "bodies": [
+    {
+      "id": "sun",
+      "name": "Sun",
+      "type": "star",
+      "parent": null,
+      "radiusKm": 695700,
+      "rotationPeriodH": 609.12,
+      "emissiveHdr": [8, 7, 6],
+      "color": "#fff4e0"
+    },
+    {
+      "id": "mercury",
+      "name": "Mercury",
+      "type": "planet",
+      "parent": "sun",
+      "radiusKm": 2439.7,
+      "axialTiltDeg": 0.03,
+      "rotationPeriodH": 1407.6,
+      "texture": "mercury.jpg",
+      "color": "#8a8683",
+      "orbit": {
+        "kind": "jpl",
+        "elements": {
+          "a": [0.38709927, 0.00000037],
+          "e": [0.20563593, 0.00001906],
+          "i": [7.00497902, -0.00594749],
+          "L": [252.2503235, 149472.67411175],
+          "varpi": [77.45779628, 0.16047689],
+          "Omega": [48.33076593, -0.12534081]
+        }
+      }
+    },
+    {
+      "id": "venus",
+      "name": "Venus",
+      "type": "planet",
+      "parent": "sun",
+      "radiusKm": 6051.8,
+      "axialTiltDeg": 177.4,
+      "rotationPeriodH": -5832.5,
+      "texture": "venus.jpg",
+      "color": "#d9c9a3",
+      "orbit": {
+        "kind": "jpl",
+        "elements": {
+          "a": [0.72333566, 0.0000039],
+          "e": [0.00677672, -0.00004107],
+          "i": [3.39467605, -0.0007889],
+          "L": [181.9790995, 58517.81538729],
+          "varpi": [131.60246718, 0.00268329],
+          "Omega": [76.67984255, -0.27769418]
+        }
+      }
+    },
+    {
+      "id": "earth",
+      "name": "Earth",
+      "type": "planet",
+      "parent": "sun",
+      "radiusKm": 6371,
+      "axialTiltDeg": 23.44,
+      "rotationPeriodH": 23.9345,
+      "texture": "earth_day.jpg",
+      "color": "#3a6ea5",
+      "orbit": {
+        "kind": "jpl",
+        "elements": {
+          "a": [1.00000261, 0.00000562],
+          "e": [0.01671123, -0.00004392],
+          "i": [-0.00001531, -0.01294668],
+          "L": [100.46457166, 35999.37244981],
+          "varpi": [102.93768193, 0.32327364],
+          "Omega": [0.0, 0.0]
+        }
+      }
+    },
+    {
+      "id": "moon",
+      "name": "Moon",
+      "type": "moon",
+      "parent": "earth",
+      "radiusKm": 1737.4,
+      "axialTiltDeg": 6.68,
+      "rotationPeriodH": 655.72,
+      "texture": "moon.jpg",
+      "color": "#b0aca6",
+      "orbit": {
+        "kind": "simple",
+        "aKm": 384400,
+        "e": 0.0549,
+        "iDeg": 5.145,
+        "OmegaDeg": 125.08,
+        "omegaDeg": 318.15,
+        "periodDays": 27.321661,
+        "M0Deg": 115.365
+      }
+    },
+    {
+      "id": "mars",
+      "name": "Mars",
+      "type": "planet",
+      "parent": "sun",
+      "radiusKm": 3389.5,
+      "axialTiltDeg": 25.19,
+      "rotationPeriodH": 24.6229,
+      "texture": "mars.jpg",
+      "color": "#b5532e",
+      "orbit": {
+        "kind": "jpl",
+        "elements": {
+          "a": [1.52371034, 0.00001847],
+          "e": [0.0933941, 0.00007882],
+          "i": [1.84969142, -0.00813131],
+          "L": [-4.55343205, 19140.30268499],
+          "varpi": [-23.94362959, 0.44441088],
+          "Omega": [49.55953891, -0.29257343]
+        }
+      }
+    },
+    {
+      "id": "jupiter",
+      "name": "Jupiter",
+      "type": "planet",
+      "parent": "sun",
+      "radiusKm": 69911,
+      "axialTiltDeg": 3.13,
+      "rotationPeriodH": 9.925,
+      "texture": "jupiter.jpg",
+      "color": "#c8a06e",
+      "orbit": {
+        "kind": "jpl",
+        "elements": {
+          "a": [5.202887, -0.00011607],
+          "e": [0.04838624, -0.00013253],
+          "i": [1.30439695, -0.00183714],
+          "L": [34.39644051, 3034.74612775],
+          "varpi": [14.72847983, 0.21252668],
+          "Omega": [100.47390909, 0.20469106]
+        }
+      }
+    },
+    {
+      "id": "io",
+      "name": "Io",
+      "type": "moon",
+      "parent": "jupiter",
+      "radiusKm": 1821.6,
+      "rotationPeriodH": 42.459,
+      "color": "#d8c265",
+      "orbit": {
+        "kind": "simple",
+        "aKm": 421800,
+        "e": 0.0041,
+        "iDeg": 2.21,
+        "OmegaDeg": 0,
+        "omegaDeg": 0,
+        "periodDays": 1.769138,
+        "M0Deg": 0
+      }
+    },
+    {
+      "id": "europa",
+      "name": "Europa",
+      "type": "moon",
+      "parent": "jupiter",
+      "radiusKm": 1560.8,
+      "rotationPeriodH": 85.228,
+      "color": "#c9b7a0",
+      "orbit": {
+        "kind": "simple",
+        "aKm": 671100,
+        "e": 0.0094,
+        "iDeg": 2.68,
+        "OmegaDeg": 0,
+        "omegaDeg": 0,
+        "periodDays": 3.551181,
+        "M0Deg": 120
+      }
+    },
+    {
+      "id": "ganymede",
+      "name": "Ganymede",
+      "type": "moon",
+      "parent": "jupiter",
+      "radiusKm": 2634.1,
+      "rotationPeriodH": 171.709,
+      "color": "#9a9086",
+      "orbit": {
+        "kind": "simple",
+        "aKm": 1070400,
+        "e": 0.0013,
+        "iDeg": 2.29,
+        "OmegaDeg": 0,
+        "omegaDeg": 0,
+        "periodDays": 7.154553,
+        "M0Deg": 240
+      }
+    },
+    {
+      "id": "callisto",
+      "name": "Callisto",
+      "type": "moon",
+      "parent": "jupiter",
+      "radiusKm": 2410.3,
+      "rotationPeriodH": 400.536,
+      "color": "#6f6357",
+      "orbit": {
+        "kind": "simple",
+        "aKm": 1882700,
+        "e": 0.0074,
+        "iDeg": 2.02,
+        "OmegaDeg": 0,
+        "omegaDeg": 0,
+        "periodDays": 16.689017,
+        "M0Deg": 60
+      }
+    },
+    {
+      "id": "saturn",
+      "name": "Saturn",
+      "type": "planet",
+      "parent": "sun",
+      "radiusKm": 58232,
+      "axialTiltDeg": 26.73,
+      "rotationPeriodH": 10.656,
+      "texture": "saturn.jpg",
+      "color": "#d9c193",
+      "ring": { "innerKm": 74500, "outerKm": 140220, "texture": "saturn_ring.png" },
+      "orbit": {
+        "kind": "jpl",
+        "elements": {
+          "a": [9.53667594, -0.0012506],
+          "e": [0.05386179, -0.00050991],
+          "i": [2.48599187, 0.00193609],
+          "L": [49.95424423, 1222.49362201],
+          "varpi": [92.59887831, -0.41897216],
+          "Omega": [113.66242448, -0.28867794]
+        }
+      }
+    },
+    {
+      "id": "titan",
+      "name": "Titan",
+      "type": "moon",
+      "parent": "saturn",
+      "radiusKm": 2574.7,
+      "rotationPeriodH": 382.69,
+      "color": "#c7973c",
+      "orbit": {
+        "kind": "simple",
+        "aKm": 1221870,
+        "e": 0.0288,
+        "iDeg": 27.0,
+        "OmegaDeg": 113.66,
+        "omegaDeg": 0,
+        "periodDays": 15.945421,
+        "M0Deg": 0
+      }
+    },
+    {
+      "id": "uranus",
+      "name": "Uranus",
+      "type": "planet",
+      "parent": "sun",
+      "radiusKm": 25362,
+      "axialTiltDeg": 97.77,
+      "rotationPeriodH": -17.24,
+      "texture": "uranus.jpg",
+      "color": "#9fd3d8",
+      "orbit": {
+        "kind": "jpl",
+        "elements": {
+          "a": [19.18916464, -0.00196176],
+          "e": [0.04725744, -0.00004397],
+          "i": [0.77263783, -0.00242939],
+          "L": [313.23810451, 428.48202785],
+          "varpi": [170.9542763, 0.40805281],
+          "Omega": [74.01692503, 0.04240589]
+        }
+      }
+    },
+    {
+      "id": "neptune",
+      "name": "Neptune",
+      "type": "planet",
+      "parent": "sun",
+      "radiusKm": 24622,
+      "axialTiltDeg": 28.32,
+      "rotationPeriodH": 16.11,
+      "texture": "neptune.jpg",
+      "color": "#4a6fd4",
+      "orbit": {
+        "kind": "jpl",
+        "elements": {
+          "a": [30.06992276, 0.00026291],
+          "e": [0.00859048, 0.00005105],
+          "i": [1.77004347, 0.00035372],
+          "L": [-55.12002969, 218.45945325],
+          "varpi": [44.96476227, -0.32241464],
+          "Omega": [131.78422574, -0.00508664]
+        }
+      }
+    },
+    {
+      "id": "triton",
+      "name": "Triton",
+      "type": "moon",
+      "parent": "neptune",
+      "radiusKm": 1353.4,
+      "rotationPeriodH": -141.04,
+      "color": "#cbb8ae",
+      "orbit": {
+        "kind": "simple",
+        "aKm": 354759,
+        "e": 0.000016,
+        "iDeg": 130.0,
+        "OmegaDeg": 178.1,
+        "omegaDeg": 0,
+        "periodDays": -5.876854,
+        "M0Deg": 0
+      }
+    },
+    {
+      "id": "pluto",
+      "name": "Pluto",
+      "type": "dwarf",
+      "parent": "sun",
+      "radiusKm": 1188.3,
+      "axialTiltDeg": 122.53,
+      "rotationPeriodH": -153.29,
+      "color": "#c9ab8b",
+      "orbit": {
+        "kind": "jpl",
+        "elements": {
+          "a": [39.48211675, -0.00031596],
+          "e": [0.2488273, 0.0000517],
+          "i": [17.14001206, 0.00004818],
+          "L": [238.92903833, 145.20780515],
+          "varpi": [224.06891629, -0.04062942],
+          "Omega": [110.30393684, -0.01183482]
+        }
+      }
+    }
+  ]
+}

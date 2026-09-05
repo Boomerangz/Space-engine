@@ -1,63 +1,100 @@
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { Engine } from './render/engine';
-import { AU_KM, EARTH_RADIUS_KM, SUN_RADIUS_KM } from './core/constants';
+import { SimClock } from './core/time/simclock';
+import { Body, SolarSystem } from './ephemeris/bodies';
+import type { SystemDef } from './ephemeris/types';
+import systemJson from './data/solar-system.json';
+import { SystemView, eclToRender } from './scene/system-view';
+import { Hud } from './ui/hud';
+import { Vec3d } from './core/math/vec3d';
 
-/**
- * M0 scene: the Sun and a textured Earth at true scale (kilometer units).
- *
- * Earth sits at the render-world origin and the Sun is placed 1 AU away —
- * a preview of the floating-origin scheme that M2 generalizes. Keeping the
- * camera near the origin avoids f32 jitter without any extra machinery.
- */
 async function main() {
   const container = document.getElementById('app')!;
   const engine = await Engine.create(container);
   const { scene, camera } = engine;
-
   console.info(`[space-engine] rendering backend: ${engine.backend}`);
 
-  // --- Sun ---
-  const sunDir = new THREE.Vector3(1, 0, 0); // from Earth toward the Sun
-  const sunMat = new THREE.MeshBasicMaterial();
-  sunMat.color.setRGB(8, 7, 6); // HDR emissive: feeds the bloom pass
-  const sun = new THREE.Mesh(new THREE.SphereGeometry(SUN_RADIUS_KM, 48, 24), sunMat);
-  sun.position.copy(sunDir).multiplyScalar(AU_KM);
-  scene.add(sun);
+  const clock = new SimClock();
+  const system = SolarSystem.fromDef(systemJson as SystemDef);
+  system.update(clock.jd);
 
-  const sunLight = new THREE.DirectionalLight(0xffffff, 2.5);
-  sunLight.position.copy(sunDir);
-  scene.add(sunLight);
+  let focus: Body = system.byId.get('earth')!;
+  let flying = false;
 
-  // --- Earth ---
-  const texLoader = new THREE.TextureLoader();
-  const earthMap = await texLoader.loadAsync('/textures/earth_day.jpg');
-  earthMap.colorSpace = THREE.SRGBColorSpace;
-  earthMap.anisotropy = 8;
-  const earth = new THREE.Mesh(
-    new THREE.SphereGeometry(EARTH_RADIUS_KM, 96, 48),
-    new THREE.MeshStandardMaterial({ map: earthMap, roughness: 0.9, metalness: 0 }),
-  );
-  earth.rotation.x = THREE.MathUtils.degToRad(-23.44); // axial tilt (placeholder until M1)
-  scene.add(earth);
+  const view = new SystemView(system, clock.jd, select);
+  scene.add(view.group);
+  void view.loadTextures(); // textures stream in; colored spheres until then
 
-  // --- Placeholder starfield (M1 replaces this with a real catalog) ---
   scene.add(makeStarfield());
 
-  // --- Camera ---
-  camera.position.set(EARTH_RADIUS_KM * 2.2, EARTH_RADIUS_KM * 0.9, EARTH_RADIUS_KM * 2.0);
+  // DOM overlay for body labels
+  const labelRenderer = new CSS2DRenderer();
+  labelRenderer.setSize(container.clientWidth, container.clientHeight);
+  labelRenderer.domElement.style.cssText =
+    'position:absolute;top:0;left:0;pointer-events:none;z-index:5';
+  container.appendChild(labelRenderer.domElement);
+  window.addEventListener('resize', () =>
+    labelRenderer.setSize(container.clientWidth, container.clientHeight),
+  );
+
   const controls = new OrbitControls(camera, engine.renderer.domElement);
   controls.enableDamping = true;
-  controls.minDistance = EARTH_RADIUS_KM + 200;
-  controls.maxDistance = AU_KM * 4;
+  controls.minDistance = focus.def.radiusKm * 1.05;
+  controls.maxDistance = 1e10;
+  // spawn on the sunlit side of the focus body, slightly off-axis
+  {
+    const sun = system.byId.get('sun')!;
+    const toSun = new THREE.Vector3();
+    eclToRender(Vec3d.subVectors(sun.worldPosition, focus.worldPosition), toSun).normalize();
+    const side = new THREE.Vector3().crossVectors(toSun, new THREE.Vector3(0, 1, 0)).normalize();
+    camera.position
+      .copy(toSun)
+      .addScaledVector(side, 0.7)
+      .addScaledVector(new THREE.Vector3(0, 1, 0), 0.35)
+      .normalize()
+      .multiplyScalar(focus.def.radiusKm * 4);
+  }
 
-  // --- Loop ---
-  const clock = new THREE.Clock();
+  const hud = new Hud(system, clock, select);
+  hud.setFocus(focus.def.id);
+
+  /**
+   * Refocus on a body. The render world is always origin-rebased to the
+   * focus body, so on switch we shift the camera by the old→new focus offset
+   * to keep its true position continuous, then glide in.
+   */
+  function select(b: Body) {
+    if (b === focus) return;
+    const shift = new THREE.Vector3();
+    eclToRender(Vec3d.subVectors(focus.worldPosition, b.worldPosition), shift);
+    camera.position.add(shift);
+    focus = b;
+    flying = true;
+    hud.setFocus(b.def.id);
+    controls.minDistance = b.def.radiusKm * 1.05;
+  }
+
+  const frameClock = new THREE.Clock();
   async function frame() {
-    const dt = clock.getDelta();
-    earth.rotation.y += dt * 0.02;
+    const dt = Math.min(frameClock.getDelta(), 0.1);
+    clock.update(dt);
+    system.update(clock.jd);
+    view.sync(focus);
+
+    if (flying) {
+      const desired = focus.def.radiusKm * 4;
+      const d = camera.position.length();
+      const nd = THREE.MathUtils.damp(d, desired, 3, dt);
+      camera.position.setLength(nd);
+      if (Math.abs(nd - desired) < desired * 0.02) flying = false;
+    }
+
     controls.update();
+    hud.update();
     await engine.render();
+    labelRenderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -68,7 +105,6 @@ function makeStarfield(): THREE.Points {
   const radius = 5e10; // km, well beyond the planets
   const positions = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
-    // uniform directions on the sphere
     const z = Math.random() * 2 - 1;
     const phi = Math.random() * Math.PI * 2;
     const r = Math.sqrt(1 - z * z);

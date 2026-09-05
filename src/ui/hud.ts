@@ -1,6 +1,7 @@
 import type { Body, SolarSystem } from '../ephemeris/bodies';
 import type { CameraRig } from '../camera/rig';
 import { SimClock, jdToDate } from '../core/time/simclock';
+import { AU_KM, GM_SUN } from '../core/constants';
 
 function fmtKm(km: number): string {
   if (km >= 1e7) return `${(km / 149597870.7).toFixed(3)} au`;
@@ -45,6 +46,13 @@ const HUD_CSS = `
 }
 .hud-status .mode { color: #8fc1ff; }
 .hud-status .hint { color: #77839a; font-size: 11px; }
+.hud-info {
+  top: 118px; right: 12px; text-align: right; line-height: 1.5;
+  background: rgba(10, 16, 26, 0.55); border: 1px solid rgba(120, 150, 190, 0.25);
+  border-radius: 6px; padding: 6px 12px; font-variant-numeric: tabular-nums;
+  color: #9fb0c4; font-size: 12px;
+}
+.hud-info .title { color: #dfe8f2; font-size: 13px; }
 .body-label {
   color: #b9c6d8; font-size: 12px; cursor: pointer; pointer-events: auto;
   padding: 6px; text-shadow: 0 0 4px #000;
@@ -65,11 +73,17 @@ export class Hud {
   private readonly warpEl: HTMLSpanElement;
   private readonly pauseBtn: HTMLButtonElement;
   private readonly statusEl: HTMLDivElement;
+  private readonly infoEl: HTMLDivElement;
+  private frames = 0;
+  private fps = 0;
+  private lastFpsAt = performance.now();
+  private quality = 2;
 
   constructor(
     system: SolarSystem,
     private readonly clock: SimClock,
     onSelect: (b: Body) => void,
+    onQuality?: (level: number) => void,
   ) {
     const style = document.createElement('style');
     style.textContent = HUD_CSS;
@@ -106,27 +120,67 @@ export class Hud {
     this.dateEl.className = 'date';
     bar.appendChild(this.dateEl);
     mk('Now', () => clock.setNow());
+    if (onQuality) {
+      const names = ['Low', 'Med', 'High'];
+      const qBtn = mk(`Q:${names[this.quality]}`, () => {
+        this.quality = (this.quality + 1) % 3;
+        qBtn.textContent = `Q:${names[this.quality]}`;
+        onQuality(this.quality);
+      });
+    }
     document.body.appendChild(bar);
 
     this.statusEl = document.createElement('div');
     this.statusEl.className = 'hud hud-status';
     document.body.appendChild(this.statusEl);
+
+    this.infoEl = document.createElement('div');
+    this.infoEl.className = 'hud hud-info';
+    document.body.appendChild(this.infoEl);
   }
 
-  setFocus(id: string): void {
+  setFocus(body: Body): void {
     for (const [bodyId, btn] of this.buttons) {
-      btn.classList.toggle('active', bodyId === id);
+      btn.classList.toggle('active', bodyId === body.def.id);
     }
+    const def = body.def;
+    const rows = [`<span class="title">${def.name}</span>`, `${def.type}`];
+    rows.push(`radius ${def.radiusKm.toLocaleString('en-US')} km`);
+    const orbit = def.orbit;
+    if (orbit) {
+      const el = body.elementsAt(this.clock.jd)!;
+      const days =
+        orbit.kind === 'simple'
+          ? Math.abs(orbit.periodDays)
+          : (2 * Math.PI * Math.sqrt(el.a ** 3 / GM_SUN)) / 86400;
+      rows.push(
+        el.a > AU_KM * 0.01
+          ? `a = ${(el.a / AU_KM).toFixed(2)} au`
+          : `a = ${Math.round(el.a).toLocaleString('en-US')} km`,
+        days > 400 ? `period ${(days / 365.25).toFixed(1)} yr` : `period ${days.toFixed(2)} d`,
+      );
+    }
+    if (def.rotationPeriodH) {
+      rows.push(`day ${Math.abs(def.rotationPeriodH).toFixed(1)} h${def.rotationPeriodH < 0 ? ' (retro)' : ''}`);
+    }
+    this.infoEl.innerHTML = rows.join('<br>');
   }
 
   update(rig?: CameraRig): void {
+    this.frames++;
+    const now = performance.now();
+    if (now - this.lastFpsAt >= 1000) {
+      this.fps = Math.round((this.frames * 1000) / (now - this.lastFpsAt));
+      this.frames = 0;
+      this.lastFpsAt = now;
+    }
     this.dateEl.textContent = jdToDate(this.clock.jd).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
     this.warpEl.textContent = this.clock.paused ? '❚❚' : this.clock.warpLabel;
     this.pauseBtn.textContent = this.clock.paused ? '▶' : '❚❚';
     if (rig) {
       const mode = rig.mode === 'orbit' ? 'Orbit' : 'Fly';
       this.statusEl.innerHTML =
-        `<span class="mode">${mode}</span> · ${rig.focus.def.name}<br>` +
+        `<span class="mode">${mode}</span> · ${rig.focus.def.name} · ${this.fps} fps<br>` +
         `alt ${fmtKm(Math.max(rig.surfaceDistance, 0))}<br>` +
         `<span class="hint">F fly/orbit · WASD+RV move · wheel ${rig.mode === 'orbit' ? 'zoom' : 'speed'}</span>`;
     }

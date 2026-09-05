@@ -70,4 +70,10 @@ export class Engine {
   async render(): Promise<void> {
     await this.postProcessing.renderAsync();
   }
+
+  /** 0 = low, 1 = medium, 2 = high */
+  setQuality(level: number): void {
+    const ratios = [0.75, 1, Math.min(window.devicePixelRatio, 2)];
+    this.renderer.setPixelRatio(ratios[Math.max(0, Math.min(2, level))]);
+  }
 }

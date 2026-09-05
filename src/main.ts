@@ -53,15 +53,15 @@ async function main() {
     rig.spawnAt(toSun);
   }
 
-  const hud = new Hud(system, clock, select);
-  hud.setFocus(startFocus.def.id);
+  const hud = new Hud(system, clock, select, (level) => engine.setQuality(level));
+  hud.setFocus(startFocus);
 
   // debug/testing handle (used by the Playwright verification scripts)
   Object.assign(window as object, { __se: { rig, clock, system, engine, select } });
 
   function select(b: Body) {
     rig.flyTo(b);
-    hud.setFocus(b.def.id);
+    hud.setFocus(b);
   }
 
   const frameClock = new THREE.Clock();
